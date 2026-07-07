@@ -1,0 +1,567 @@
+---
+title: "Midterm Project: Economic and Demographic Dynamics in the Southern Cone"
+subtitle: "MATH105 Introduction to Statistics"
+author: |
+  GROUP 3
+date: "`r Sys.Date()`"
+output: 
+ html_document:
+    number_sections: true
+    toc: true
+    toc_float: true
+    toc_depth: 3
+---
+# Motivation 
+Amid the world’s many diverse regions, this project focuses on the Southern Cone, comprising Argentina, Chile, and Uruguay. The Southern Cone is often recognized as one of the most socio-economically advanced subregions in South America, characterized by relatively high living standards, strong industrialization, and distinct cultural identities that emerged from the blending of American and European traditions.
+
+Precisely because the Southern Cone is considered one of the most developed areas in the region, this project is driven by a deeper question: beyond its image of prosperity and stability, are there any underlying challenges or contradictions that persist beneath the surface? In Vietnam, when people think of the Americas, they are usually more familiar with the United States, while South America remains relatively less well known, except for its strong reputation in football. In addition, the Southern Cone is geographically very far from Vietnam, and its economic conditions, health systems, social structures, and cultural backgrounds differ greatly from those in Southeast Asia. Because of these differences, we are interested in exploring this region further and learning more about its realities beyond the common perceptions.
+
+In addition to analyzing key indicators: population, fertility, life expectancy, inequality, and income levels within each country, the project seeks to generate meaningful insights by linking these trends to historical and social developments. More importantly, it compares these variables across countries to explore potential correlations, allowing us to observe how demographic and socio-economic changes interact from multiple perspectives within the broad social context of three nations.
+
+```{r regional_map, fig.width=8, fig.height=6, echo =FALSE, message=FALSE, warning=FALSE}
+# load libraries
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(dplyr)
+
+# get world map data
+wrld <- ne_countries(scale = "medium", returnclass = "sf")
+
+# define Southern Cone countries
+focus_countries <- c("Argentina", "Chile", "Uruguay")
+
+# classify countries
+wrld <- wrld %>%
+  mutate(group = ifelse(name %in% focus_countries, name, "Other"))
+
+# plot map
+ggplot(data = wrld) +
+  geom_sf(aes(fill = group), color = "white", size = 0.2) +
+  
+  # zoom into Southern Cone region
+  coord_sf(xlim = c(-80, -50), ylim = c(-60, -20), expand = FALSE) +
+  
+  scale_fill_manual(values = c(
+    "Argentina" = "#F8766D",
+    "Chile" = "#00BFC4",
+    "Uruguay" = "#E69F00",
+    "Other" = "grey85"
+  )) +
+  
+  labs(
+    title = "Southern Cone Region",
+    fill = "Highlighted Countries"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 18, face = "bold"),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10)
+  )
+```
+
+
+# Data Description
+## Data Explanation
+```{r data_description_table, echo=FALSE, message=FALSE, warning=FALSE}
+library(knitr)
+library(kableExtra)
+
+data_description <- data.frame(
+  Columns = c(
+    "average_daily_income_per_person",
+    "household_income",
+    "babies_per_woman",
+    "life_expectancy_at_birth",
+    "population",
+    "gini",
+    "Income_level",
+    "Share.of.people.on.Level.x"
+  ),
+  Explanation = c(
+    "Average income earned per person per day",
+    "Average total income of a household per year",
+    "Average number of children a woman would have if she experienced the fertility rates of that year throughout her lifetime",
+    "The average number of years a newborn is expected to live if current mortality rates remain constant",
+    "The total number of people living in the country in a given year",
+    "A measure of income inequality ranging from 0 to 100, where 0 represents perfect equality and 100 represents perfect inequality",
+    "The income classification assigned to a country",
+    "The percentage of the population whose income falls within income level x"
+  )
+)
+
+kable(data_description) %>%
+  kable_styling(full_width = FALSE)
+```
+## Data Functions
+- Babies per woman, life expectancy at birth, population: Used to observe and compare the impacts of dictatorship on population dynamics.
+- Gini (coefficient), Share of people on Level x: Used to observe and compare the impacts of dictatorships on inequality and social class.
+- Income level, average daily income per person, household income: Used to observe and compare the impacts of dictatorship on living standards.
+
+# Data Set-up
+## Install Packages and resources
+``` {r data_set_up, message=FALSE} 
+# Install packages if needed
+if (!require(readxl)) install.packages("readxl")
+if (!require(ggplot2)) install.packages("ggplot2")
+if (!require(dplyr)) install.packages("dplyr")
+if (!require(rnaturalearth)) install.packages("rnaturalearth")
+if (!require(rnaturalearthdata)) install.packages("rnaturalearthdata")
+if (!require(gganimate)) install.packages("gganimate")
+if (!require(plotly)) install.packages("plotly")
+if (!require(scales)) install.packages("scales")
+if (!require(tidyr)) install.packages("tidyr")
+if (!require(gifski)) install.packages("gifski")
+if (!require(png)) install.packages("png")
+if (!require(gridExtra)) install.packages("gridExtra")
+# Load libraries
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(gganimate)
+library(plotly)
+library(scales)
+library(tidyr)
+library(gifski)
+library(png)
+library(gridExtra)
+print("Hello world!")
+
+
+
+```
+
+## Read data files 
+``` {r read_data_files}
+world <- read.csv("world_data.csv") 
+income <-read.csv("income_level.csv") 
+head(world, 10)
+head(income, 10)
+```
+
+# Data processing
+## Select 3 countries from the dataset
+``` {r selecting_countries}
+#identifying selected countries
+selected_countries <- c("Chile", "Argentina", "Uruguay")
+
+# filter the income level dataframe
+
+income_selected <- income %>%
+	filter(name %in% selected_countries) %>%
+    filter(!is.na(population), !is.na(year))
+
+# filter the world data frame
+
+world_selected <- world %>%
+	filter(country %in% selected_countries) %>%
+  	filter(!is.na(year), !is.na(country))
+
+head(world_selected)
+head(income_selected)
+```
+
+## Join datasets
+``` {r joining_datasets}
+joined_data <- world_selected %>%
+left_join(income_selected, by = c("year", "country" = "name"))
+head(joined_data)
+```
+
+## Check for NA values
+``` {r na_checking}
+na_check <- any(is.na(joined_data))
+na_summary <- colSums(is.na(joined_data))
+
+list(
+	na_check = na_check, 
+	na_summary = na_summary
+)
+```
+
+We detected NA values in the dataset and chose to retain them to preserve the available information rather than removing observations globally.
+
+## Check for outliers
+``` {r outlier_checking, warning=FALSE}
+joined_data_numeric <- joined_data %>%
+  select(
+    life_expectancy_at_birth,
+    babies_per_woman,
+    average_daily_income_per_person,
+    gini,
+    household_income,
+    population,
+    Share.of.people.on.Level.1,
+    Share.of.people.on.Level.2,
+    Share.of.people.on.Level.3,
+    Share.of.people.on.Level.4,
+    Share.of.people.on.Level.5
+  ) %>%
+  select_if(is.numeric)
+
+joined_data_vars <- names(joined_data_numeric)
+
+# Create a list to store the boxplots for joined_data
+joined_data_plots <- list()
+
+# Create boxplots with smaller title text to avoid overlap
+for (var in joined_data_vars) {
+  p <- ggplot(joined_data_numeric, aes(y = .data[[var]])) +
+    geom_boxplot() +
+    labs(
+      title = paste("Boxplot of", var),
+      y = var
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 10, hjust = 0.5), 
+      axis.title.y = element_text(size = 9)
+    )
+  joined_data_plots[[var]] <- p 
+}
+
+grid.arrange(grobs = joined_data_plots, ncol = 3)
+```
+
+A number of outliers are visible in 'average daily income per person', 'household income', 'population', and the share of people on Levels 1, 4, and 5. We decided to retain these observations for several reasons:
+- They represent real phenomena: Outliers in variables such as average daily income per person, household income, population, and the share of people in Levels 1, 4, and 5 likely reflect genuine historical or economic events rather than data errors.
+
+- They capture the full variability of the dataset: Because the dataset spans long time periods and multiple countries, large differences in income levels, population sizes, and poverty distributions are expected. Keeping outliers preserves this variability.
+
+- There is no evidence of data errors: Since there is no clear indication that these values are incorrect or due to measurement mistakes, removing them could distort the true characteristics of the dataset.
+
+
+## Check data types of datasets
+``` {r}
+str(joined_data)
+
+world_selected$babies_per_woman_cat <- cut(world_selected$babies_per_woman,
+                                 breaks = c(-Inf,4,6,Inf),
+                                 labels = c("Moderate fertility", "Discernible Fertility", "Drastic Fertility"))
+```
+
+We created a categorical version of `babies_per_woman` to classify fertility rates into three categories, to better illustrate how they are distributed across  the selected countries during a period of interest.
+
+# Visualization and Analysis
+## Overview Trends
+
+![](Timeline.png)
+
+
+In this session, we will use the data for the full period of time, from 1800 to 2100, to visualize and better witness the trends of demographic and economic development of three countries in the Southern Cone, namely Argentina, Chile, and Uruguay. From this foundational analysis, we can analyze and compare these countries’ features to extract certain meaningful information.
+
+From an overall perspective, the period was marked by two main events: (a) a short-term economic boom and national stability at the beginning of the 20th century, and (b) a regime of dictatorship named Operation Condor during the 1960s-1980s that impacted the Southern Cone. With these two events, the area underwent a drastic change in terms of (1) population, (2) fertility, (3) life expectancy at birth, and (4) living standard.
+
+
+### Population Dynamics
+
+#### Total population
+``` {r total_pop}
+total_pop <- income_selected %>%
+mutate(population_million = population / 1e6)
+
+d <- ggplot(total_pop, aes(year, population_million, color = name)) + geom_line() + theme_minimal()
+
+ggplotly(d)
+```
+
+**Insight**: Only around the 20th century did population growth amongst the chosen nations start to emerge. Nevertheless, Uruguay was the country that had the least growth, in comparison to Argentina at best and Chile at second. The utmost certain contributing factor can be traced back to a massive influx of European immigrants, which were motivated by the escape from poverty and world war aftermaths, as well as chance for better education.
+
+#### Fertility (Babies per woman)
+
+``` {r}
+world_later_half_19thcen <- world_selected %>%
+  filter(year > 1850 & year < 1900)
+fertility <- ggplot(world_later_half_19thcen, aes(babies_per_woman_cat, fill = country)) + geom_bar(position = "dodge") + theme_minimal()
+
+fertility_by_year <- ggplot(world_selected, aes(year, babies_per_woman, color = country)) + geom_line() + theme_minimal()
+ggplotly(fertility)
+ggplotly(fertility_by_year)
+```
+
+**Insight**: 
+From the bar chart to specifically describe the happenings of 1895 (mainly oriented towards categorical input), most of the three nations in this year witnessed a drastic increase in the fertility rate before the 20th century. While Uruguay had all of its input focused on discernible rate, Chile and Argentina were the nations that had their rate up to drastic levels. This showed, from an overall perspective, how the fertility rate was extremely concerning among households of the Southern Cone. The reason why we presented this graph before the line chart, was to accentuate the troubled fertility rate within the area before there were solutions for such tendencies to drop.
+
+According to the line graph (mainly oriented towards tendency and numerical input), most of the nations chosen seem only to maintain their steady yet extremely high fertility rate (around 6 babies/woman), until it steadily drops afterwards. From holding a subordinate position to only having babies and taking care of the family, to having occupations and receiving education, women started to have fewer babies and took care of their careers more in the first four decades of the 20th century (Asun6ion, 2011). They also mentioned some of the names of organizations that fostered the growth of women's rights instead of domestic natal responsibility, such as Nuestra Causa and El Mercurio. This created the protective legislation for working women and thus pushed the start of the fertility drop that we could see at the beginning of the 20th century.
+
+
+#### Life Expectancy At Birth
+
+``` {r}
+lifeExp <- ggplot(world_selected, aes(year, life_expectancy_at_birth, color = country)) + geom_line() + theme_minimal()
+
+ggplotly(lifeExp)
+```
+
+**Insight**: Similarly to the other charts, life expectancy was incredibly low at the beginning, until its rise from the start of the 20th century, despite a reduced speed of growth during the second half of the 20th century. This increase could be justified by the introduction of focus on economic growth and a democratic political system at first, while the slowed-down speed of life expectancy growth was due to the mishaps of dictatorship around the area, leading to less care about life security (Melanie, 2007).
+
+### Living Standard
+
+#### Income level
+
+``` {r}
+incomeLvl <- ggplot(world_selected, aes(year, country, fill = income_level)) +  
+  geom_tile(width = 1, height = 0.6) +
+  scale_fill_manual(values = c(
+    "level 4" = "#E69F00",  # Orange-Yellow
+    "level 3" = "#56B4E9",  # Sky Blue
+    "level 2" = "#009E73",  # Blue-Green
+    "level 1" = "#CC79A7"   # Pink/Violet
+  )) +
+  labs(
+    title = "Income Level Progression by Country",
+    x = "Year",
+    y = "Country",
+    fill = "Income Level"
+  ) + 
+  theme_minimal()
+ggplotly(incomeLvl)
+```
+
+**Insight**: To start with, the chart shows four levels of income among the nations within the year range of 1800 to 2100. With level 1(Pink/Violet), this level shows the lowest income range possible, meaning poverty. Meanwhile, levels 2 (Green) and 3 (Blue) show recovering and small growth from the economic crisis, and level 4 (Yellow) shows signs of economic stability for the chosen nations.
+Chile seemed to be the most struggling country financially as it was the only country starting at a level-1 income level around the 1800s. Expectably, all three countries reached level-3 around the start of the 20th century, explainable by a good education system and export of food products (Royal, 2016). The situation is expected to keep getting better until they all reach level-4, happening in the second half of the 21st century.
+
+
+### Inequality
+
+``` {r}
+inequality <- ggplot(income_selected, aes(year, gini, color = name)) + geom_line() +theme_minimal()
+
+
+ggplotly(inequality)
+```
+
+**Insight**:While the Gini coefficient fluctuated strongly throughout the years, all of them are expected to lead towards a positive ending, meaning a low income inequality level. With a first start of small inequality drops due to economic boom by production of agricultural products and technological advancement in 1900, the economic situation regained its instability due to the Great Depression and the emergence of dictatorship after 1900, under the name of Operation Condor. The operation was a project of alliance between America and Southern Cone countries to eliminate leftist populations (Luke, 2024).
+
+
+## Observations in terms of history/geography
+
+**Overall Insight**: The Southern Cone had a tumultuous past filled with internal conflicts and civil war at the beginning of the period. All three countries then enjoyed a good short-term growth at the beginning, thanks to a proper system of education, democracy, and economy. Then, under the impact and concern of America to condemn leftist movements in the Southern Cone, dictatorship rose between 1960s and 1980s, creating havoc until its end and subsequent regain of stability until now.
+
+### Chile
+
+``` {r}
+
+# Selecting only chile
+chile_selected <- world_selected %>%
+  filter(country == "Chile") 
+
+```
+#### Fertility Rate
+``` {r}
+chile_fertility <- ggplot(chile_selected, aes(year, babies_per_woman)) +
+  geom_line(color = "green") +
+  theme_minimal()
+ggplotly(chile_fertility)
+```
+
+**Insight**: The nation was suffering from a high fertility rate right before the 20th century, of 6 babies per woman. This occurred due to the President José Manuel Balmaceda's numerous disagreements with Congress and thus civil war afterwards (Melanie, 2007). Furthermore, women's rights were not taken care of until the start of education and jobs for them at the start of the 20th century. Only then did there commence to be a reduction in the fertility rate. Despite a small increase in 1960 for the emergence of dictatorship, the number continued to steadily reduce until expectedly in the future.
+
+
+#### Life Expectancy
+
+``` {r}
+
+chile_life_expectancy <- ggplot(chile_selected, aes(year, life_expectancy_at_birth)) +
+  geom_line(color = "Green") +
+  theme_minimal()
+
+ggplotly(chile_life_expectancy)
+```
+
+
+**Insight**: Life expectancy was below for Chile at the start, until the nation started to witness a more steady growth from the 1900s until 2100, making Chile have the highest life expectancy growth at the end (nearly 100), and thus overcoming the other two nations. The momentum of growth started with the strong social reforms by the Radical Party, where the nation started to focus more on solutions to resolve economic hardships (Melanie, 2007).
+
+
+#### Income Inequality Rate
+
+``` {r, message=FALSE}
+# Selecting chile from the joined data
+chile_from_joined <- joined_data %>%
+  filter(country == "Chile")
+chile_inequality <- ggplot(chile_from_joined, aes(year, gini)) +
+  geom_line(color = "green")+
+  theme_minimal()
+
+ggplotly(chile_inequality)
+```
+
+**Insight**: While the income inequality rate for Chile fluctuated throughout the period, this inequality reached its highest peak in the 1970s due to the introduction of the Pinochet Dictatorship, previously introduced in this paper as the America-backed operation to condemn the leftist movements. The coefficient almost reached 70 during the 1960s-1980s period. This uprising dictatorship led to deregulation of labor and drastic free-market reforms until its end in 1990. After that, the nation started to improve its situation and will have a relatively low rate in 2050.
+
+
+### Argentina
+
+#### Fertility Rate
+``` {r}
+
+# Selecting only Argentina
+arg_selected <- world_selected %>%
+  filter(country == "Argentina") 
+arg_fertility <- ggplot(arg_selected, aes(year,babies_per_woman)) +
+  geom_line(color = "red") +
+  theme_minimal()
+ggplotly(arg_fertility)
+```
+
+
+**Insight**: Similarly, Argentina also suffered from a high fertility rate of 7 babies/woman at the start, until its small change at the end of the 19th century, due to the introduction of socialist-leaning policy called Peronism, a labor-centric movement that created political power through organized labor and labor rights for the whole population, including women. Therefore, the movement itself fostered labor rights expansion and strong support from unions to protect women’s rights (Luke, 2024).
+
+
+#### Life Expectancy
+
+``` {r}
+arg_lifeExp <- ggplot(arg_selected, aes(year, life_expectancy_at_birth)) +
+  geom_line(color = "red") +
+  theme_minimal()
+
+ggplotly(arg_lifeExp)
+```
+
+**Insight**: The life expectancy of Argentina was extremely low at the start, with around only 35 years at the beginning, until the start of growth from 1900. This drastic increase in life expectancy occurred thanks to the nation’s decision to produce domestic goods, which helped rebuild the nation’s economic growth and thus life quality. Despite social unrest and repression of social rights, Juan Perón managed to maintain the national growth with a focus on improving working conditions and government spending.
+
+
+#### Income Inequality Rate
+``` {r}
+# Selecting only Argentina from joined data
+arg_from_joined <- joined_data %>%
+    filter(country == "Argentina")
+arg_inequality <- ggplot(arg_from_joined, aes(year, gini)) +
+  geom_line(color = "red") +
+  theme_minimal()
+ggplotly(arg_inequality)
+```
+
+**Insight:** Despite having the lowest Gini coefficient among the three nations, Argentina still suffered a lot from fluctuations throughout the period. This mostly comes from the unstable economic growth, social unrest due to an unstable government created by coup d’etat, political turmoil, and disagreements (Luke, 2024). Fortunately, thanks to the exportation of agricultural products such as wheat, corn and wool, and technological advancements, the inequality commenced to drop from the beginning of the 20th century. Yet, the nation was put under dictatorship regimes known as Operation Condor that made the nation start to suffer inequality once again starting from the 1960s onwards.
+
+### Uruguay
+#### Fertility Rate
+
+``` {r}
+
+# Selecting only Uruguay
+uru_selected <- world_selected %>%
+  filter(country == "Uruguay") 
+uru_fertility <- ggplot(uru_selected, aes(year, babies_per_woman)) +
+  geom_line(color = "blue") +
+  theme_minimal()
+ggplotly(uru_fertility)
+```
+
+**Insight**: Uruguay also had 6 babies/woman at the start of the period, yet thankfully had the most discernible drop among the three. The events occurred thanks to the authority of José Batlle y Ordóñez, who fostered significant growth in the state through mandatory and labor protections, thus lowering the fertility rate. A small rise happened due to the uprising of Juan María Bordaberry to enforce extreme rules, yet it quickly ended when elections resumed in 1884 (Luke, 2024)
+
+#### Life Expectancy
+
+``` {r}
+uru_lifeExp <- ggplot(uru_selected, aes(year, life_expectancy_at_birth)) +
+  geom_line(color = "blue") +
+  theme_minimal()
+
+ggplotly(uru_lifeExp)
+```
+
+**Insight**: With public utilities, energy and infrastructure, the nation managed to increase its low expectancy at the start of merely 35, in a steady fashion up to almost 70 in the 1950s. The period was then struck was dictatorship from Operation Condor, resulting in a reduction in the speed of growth, until the political system was back on track at the end of the 20th century.
+
+
+
+#### Income Inequality Rate
+``` {r}
+# Selecting only Uruguay from joined data
+uru_from_joined <- joined_data %>%
+    filter(country == "Uruguay")
+uru_inequality <- ggplot(uru_from_joined, aes(year, gini)) +
+  geom_line(color = "blue") +
+  theme_minimal()
+ggplotly(uru_inequality)
+```
+
+
+**Insight**: The major economic breakdown of the Great Depression (1933) and the military dictatorship of Operation Condor (1973-1984) were the causes for the peak of the mid-20th century inequality rate. As can be seen on the graph, the highest the coefficient could reach was almost 70, indicating a drastic gap in the national economy. After the end of such chaos, the nation gained back its economic power and reduced the poverty gap.
+
+
+## Data Relations
+### Income - Life Expectancy
+``` {r}
+inc_lifeExp <- ggplot(world_selected, aes(income_level, life_expectancy_at_birth,color = country)) + geom_boxplot() + theme_minimal()
+inc_lifeExp
+``` 
+
+**Insights**: This box plot shows how life expectancy at birth varies across four income levels in Argentina, Chile, and Uruguay. The x-axis represents income levels (from level 1 to level 4), while the y-axis shows life expectancy at birth. Each box plot presents the distributions of life expectancy within each income group, including the median, quartiles, and overall spread for the three countries.
+
+A clear positive correlation emerges between income level and life expectancy. As income increases from one level to the next, the average number of years lived also rises. At income level 2, life expectancy fluctuates considerably, ranging from the low 30s to the mid-40s. Moving to income level 3, life expectancy increases substantially, clustering around 65 to 75 years. By income level 4, all three countries have high life expectancies, approximately 82 to 90 years. This pattern strongly suggests that higher income levels are associated with significant improvements in longevity.
+
+In terms of variability, life expectancy shows greater dispersion at lower income levels than at higher ones. At level 2, data points are widely spread, indicating notable instability and fluctuation in living conditions. By level 4, the distribution tightens considerably, with smaller interquartile ranges and fewer extreme values. This indicates that as countries reach higher income levels, life expectancy not only increases but also becomes more stable and consistent across populations.
+
+It is clearly evident that higher income levels are associated with longer life expectancy across the Southern Cone. Greater financial resources enable individuals to secure not only essential needs, such as adequate nutrition, housing, education, and healthcare, but also additional services that support their overall well-being throughout their lifetime.
+
+While this is a positive reality, greater fairness could be achieved if governments in these three countries implemented policies aimed at improving income conditions for vulnerable communities. Such measures would allow disadvantaged groups to access essential goods and services in a timely manner, for instance, consistent access to nutritious food or prompt medical treatment in emergency situations. The objective is not to ensure access to luxury services, but to guarantee that lower-income populations can meet their daily needs with stability. By reducing barriers to basic well-being, governments can sustainably improve life expectancy across all segments of society.
+
+
+### Fertility - Life Expectancy
+
+``` {r}
+fert_lifeExp <- ggplot(world_selected, aes(babies_per_woman, life_expectancy_at_birth, color = country)) +
+  geom_point(alpha = 0.5) + theme_minimal()
+ggplotly(fert_lifeExp)
+```
+
+**Insights**: The scatterplot depicts the relationship between fertility rate (babies per woman) and life expectancy at birth in three Southern Cone countries. The x-axis presents the number of babies per woman, and the y-axis shows average life expectancy. Each country-year observation is represented by a dot, allowing us to trace long-term demographic transitions.
+
+The plot clearly reveals a negative correlation between fertility and life expectancy. As the number of babies per woman declines across all three countries, life expectancy rises. When fertility remains high (around 5-6 babies per woman), life expectancy is relatively low, typically 30-40 years. However, as fertility decreases to approximately 2-3 babies per woman, life expectancy increases sharply to around 75-85 years. This trend suggests that demographic transition, the shift from high to low fertility, is closely associated with substantial improvements in longevity.
+
+Life expectancy fluctuates more widely in terms of variability when fertility levels are high. At a fertility rate of 4-6 babies per woman, life expectancy ranges broadly from about 30 to 60 years, indicating instability and uneven development. In contrast, when fertility declines to around 1.5-2.5 babies per woman, life expectancy becomes more concentrated and stable. largely falling within the 75-85 year range. This indicates that as countries reduce fertility, life expectancy not only increases but also becomes less volatile over time.
+
+This relationship is directly linked to public health, particularly the life expectancy of mothers in the three nations. Higher fertility rates are associated with lower life expectancy, and vice versa, reflecting the physical health risks that reproductive responsibilities can be placed on women.
+
+Therefore, these countries are suggested to adopt more balanced and thoughtful family planning policies. Policies that encourage childbirth or provide subsidies may be appropriate when fertility needs to increase. However, when fertility reduction is necessary, measures should be gradual and supportive rather than restrictive or coercive, to avoid burdening vulnerable groups. The ultimate goal is to protect women’s health and maintain stable life expectancy, rather than allowing demographic pressures to reinforce a negative health outcome.
+
+
+### Fertility - Inequality
+``` {r}
+fert_gini <- ggplot(joined_data, aes(babies_per_woman, gini, color = country)) +
+  geom_point(alpha = 0.5) + theme_minimal() 
+ggplotly(fert_gini)
+```
+
+**Insights**: This scatterplot examines the correlation between fertility (measured as babies per woman) and the Gini coefficient in Argentina, Chile, and Uruguay. The x-axis indicates the number of babies per woman, while the y-axis reflects the level of income inequality. Each point represents a country-year observation, reflecting how both variables evolve over the given period.
+
+Unlike the previous plots, which showed a clear, strong correlation, the relationship between fertility and inequality appears less linear and less strictly inverse. However, a general pattern can still be observed. When fertility remains high (around 4-6 babies per woman), the overall trend of the Gini index tends to be higher, despite the fluctuations remaining. As fertility declines to approximately 2-3 babies per woman, inequality levels tend to decrease or fluctuate within a more moderate range. This suggests that societies with higher fertility rates are often associated with relatively greater inequality variability.
+
+Regarding variability, the Gini index shows considerable fluctuation at medium to high fertility levels. For instance, when fertility ranges between 3 and 5 babies per woman, the Gini coefficient varies widely (roughly between 40 and 70). In contrast, at lower fertility levels (around 2-3 babies per woman), inequality appears moderately lower (around 30-60), although cross-country differences remain evident. Overall, as countries move toward lower fertility levels, income inequality tends to become less volatile compared to periods characterized by higher fertility.
+
+Rising inequality reflects widening gaps between social groups in access to education, healthcare, and even reproductive services. In disadvantaged communities, fertility decisions are often shaped by structural constraints rather than by rational economic planning. As a result, higher fertility rates may be concentrated among groups with limited financial conditions.
+
+To address this issue, governments should work closely with local institutions and community organizations to expand access to reproductive healthcare and education. Meanwhile, reducing income disparities through redistributive policies and improving educational and employment opportunities for women are essential steps toward breaking the cycle of inequality and ensuring more equitable fertility outcomes.
+
+# Conclusion
+Over the period from the 1800s to the 2000s, Argentina, Chile, and Uruguay have undergone profound transformations in population, life expectancy, fertility, income levels, and inequality. Overall, population size, income levels, and life expectancy in the Southern Cone show a clear upward trajectory. In contrast, fertility has declined substantially over time, while inequality remains comparatively erratic.
+
+Looking back, dictatorship played a key role in shaping the overall trajectory of the three nations. Before 1900, internal conflicts limited development. After unification, however, economic growth accelerated thanks to advances in technology and agriculture, bringing a period of stability in the early decades. During this time, the focus remained largely on labor and productivity, with little attention to other social issues. This progress declined in the 1960s with the rise of dictatorship under the mutual regime of “Operation Condor” of the whole area, and it was only toward the late 1980s, after these regimes ended, that recovery and growth resumed.
+
+Looking ahead to the 2000-2100 projection, most core indicators, such as fertility, income levels, and life expectancy, appear to stabilize at relatively high levels. This reflects economic maturation and greater structural development across the three countries.
+
+The relationships among the variables further deepen this analysis. Income level shows a strong positive correlation with life expectancy, while fertility shows a strong negative correlation. The relationship between fertility and the Gini index is less consistent but still suggests a pattern: high fertility often coincides with higher inequality, partly due to unequal access to education, healthcare, and economic opportunities.
+
+In conclusion, this project highlights the long-term developmental trajectory of the Southern Cone and logically connects quantitative trends with key historical milestones that shaped socio-economic change. While economic growth, rising living standards, and improvements in longevity are evident achievements, inequality remains an unresolved issue. Future research can build on these findings to further examine this persistent challenge and contribute to a more comprehensive understanding of socio-economic development in the Southern Cone.
+
+# References
+
+Berglee, R. (2016, June 17). 6.4 the southern cone. Tesu.edu; University of Minnesota Libraries Publishing edition, 2016. This edition adapted from a work originally published in 2012 by Flatworld Knowledge. 
+  https://opened.tesu.edu/umnworldgeography/chapter/6-4-the-southern-cone/
+
+Laputka, M. (2007, January 8). 08.01.07: Dictatorship and transition in the southern cone. 
+  Teachersinstitute.yale.edu.         
+    https://teachersinstitute.yale.edu/curriculum/units/2008/1/08.01.07/3
+  
+
+Lavrin, A. (2011, July 7). #169 the ideology of feminism in the southern cone,     1900-1940. Wilson Center.   
+  https://www.wilsoncenter.org/publication/169-the-ideology-feminism-the-southern-cone-1900-1940
+
+Rosa, L. (2024). Dictatorships in the southern cone of south america. Studentsofhistory.com.
+  https://www.studentsofhistory.com/dictators-southern-cone
+
+
+
